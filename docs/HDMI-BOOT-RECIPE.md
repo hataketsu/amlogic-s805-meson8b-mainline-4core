@@ -53,3 +53,19 @@ WiFi + 1080p together hangs (DDR bandwidth). WiFi works at 720p, or HDMI-only at
    setenv bootcmd 'setenv bootargs console=tty0 console=ttyAML0,115200n8 panic=12 video=HDMI-A-1:1920x1080@60e; setenv initrd_high 0xffffffff; setenv fdt_high 0xffffffff; mmc rescan 0; fatload mmc 0 0x11000000 uImage; fatload mmc 0 0x12000000 uInitrd; fatload mmc 0 0x10000000 dtb; bootm 0x11000000 0x12000000 0x10000000'
    saveenv     # -> "mmc save env ok"
 Power-on now autoboots straight into the 1080p 4-core HDMI console.
+
+## Interactive console on the TV (USB keyboard)
+The HDMI shows the boot log, but the shell runs on /dev/console (=ttyAML0, serial), so the TV
+isn't interactive by itself. To type on the TV with a USB keyboard, the initramfs `init` spawns
+a shell on the HDMI VT (`/dev/tty1`) — see `initramfs/hdmi-console-init.sh`:
+
+    ( while true; do
+        setsid -c /bin/sh -c 'exec /bin/sh </dev/tty1 >/dev/tty1 2>&1' || \
+          /bin/sh </dev/tty1 >/dev/tty1 2>&1
+        sleep 1
+      done ) &
+    exec /bin/sh    # serial shell kept too
+
+A USB keyboard (HID) enumerates on the dwc2 host port → `/dev/input/event*` → input goes to the
+foreground VT (tty1) → you can type at the prompt on the TV. Confirmed working with a 2.4G RF
+keyboard+mouse combo. (multi_v7 config already has USB-HID + VT.)
