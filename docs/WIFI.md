@@ -18,6 +18,22 @@ The WiFi and the SD-card slot are **two ports of the same single SDIO controller
 ignored — only `c1108c20.mmc:slot@1` registers. So **WiFi cannot coexist with an
 SD-card rootfs** on this hardware under mainline.
 
+
+## UPDATE: WiFi + SD DO coexist (on the vendor) — mainline just lacks the port-mux
+Verified on stock Android: `wlan0` (RTL8189ES, driver `8189es`) is associated **while**
+`mmcblk0` (the SD card) is mounted — **simultaneously**. The vendor `aml_sdio` driver
+**time-multiplexes** the single SDIO controller `0xc1108c20` between port 0 (wifi) and
+port 1 (SD). So it is **not** a hardware conflict.
+
+Mainline `meson-mx-sdio` binds only the first `mmc-slot` (`of_get_compatible_child`) and has
+no runtime port-mux, so it serves the SD card only. **To enable WiFi while keeping the SD
+rootfs**, the real fix is a `meson-mx-sdio` patch that registers both slots and switches the
+controller port (pinmux + port reg) per request under a shared lock — exactly what the vendor
+driver does. Then add the out-of-tree `8189es` (RTL8189ES) driver + the GPIOX_11 power /
+GPIOX_10 32k pwrseq.
+
+Chip confirmed: **Realtek RTL8189ES** (SDIO), vendor module `8189es` / `RTL871X`.
+
 ## Paths to enable WiFi
 1. **Move rootfs off the SD card** (USB stick, or eMMC once `meson8-sdhc` is ported), so the
    SDIO controller is free for the WiFi slot. u-boot still loads kernel/dtb/initrd from the SD
@@ -59,3 +75,12 @@ WiFi rtl8189etv (SDIO) dùng **chung controller `0xc1108c20`** với khe thẻ S
 chạy song song với rootfs trên SD**. Muốn bật WiFi: chuyển rootfs sang USB/eMMC để giải
 phóng controller, thêm slot wifi + `mmc-pwrseq` (GPIOX_11) + clock 32k (GPIOX_10), rồi build
 driver `rtl8189es` out-of-tree cho armhf 6.1. Hiện giữ chạy ethernet.
+
+## CẬP NHẬT (Tiếng Việt): WiFi + thẻ SD CHẠY SONG SONG được (trên vendor)
+Kiểm chứng trên Android gốc: `wlan0` (RTL8189ES, driver `8189es`) kết nối **trong khi**
+`mmcblk0` (thẻ SD) vẫn mount — **đồng thời**. Driver `aml_sdio` của hãng **time-mux** controller
+SDIO duy nhất `0xc1108c20` giữa port 0 (wifi) và port 1 (SD). Nên **không phải xung đột phần
+cứng** — chỉ là mainline `meson-mx-sdio` chỉ bind 1 slot, không có port-mux. Muốn WiFi mà vẫn
+giữ rootfs trên SD: vá `meson-mx-sdio` để đăng ký 2 slot + chuyển port controller mỗi request
+(như `aml_sdio`), rồi build driver `8189es` + pwrseq (GPIOX_11 nguồn / GPIOX_10 32k). Chip:
+**Realtek RTL8189ES** (SDIO).
