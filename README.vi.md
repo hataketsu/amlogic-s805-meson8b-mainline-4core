@@ -59,7 +59,7 @@ kernel/   0001-meson8b-smp-tz-secure-monitor.patch   # patch platsmp.c (cho v6.1
 dtb/      meson8b-m201.dts        # 1 nhân: reserved-memory + tắt các node bị khoá secure
           meson8b-m201-tz.dts     # 4 nhân: + cpus enable-method = "amlogic,meson8b-smp-tz"
 scripts/  build-kernel.sh  make-initramfs.sh  build-sd.sh
-docs/     *.md (song ngữ Anh/Việt)
+docs/     STATUS, HISTORY, MILESTONES, PITFALLS, RE-secure-monitor, WIFI, VIDEO-DECODE (song ngữ)
 ```
 
 ## Bắt đầu nhanh

@@ -59,7 +59,7 @@ kernel/   0001-meson8b-smp-tz-secure-monitor.patch   # the platsmp.c patch (agai
 dtb/      meson8b-m201.dts        # 1-core: secmem reservation + disabled secure-locked nodes
           meson8b-m201-tz.dts     # 4-core: + cpus enable-method = "amlogic,meson8b-smp-tz"
 scripts/  build-kernel.sh  make-initramfs.sh  build-sd.sh
-docs/     HISTORY.md  MILESTONES.md  PITFALLS.md  RE-secure-monitor.md
+docs/     STATUS  HISTORY  MILESTONES  PITFALLS  RE-secure-monitor  WIFI  VIDEO-DECODE
           android-iomem.txt  stock-smp-symbols.txt
 ```
 
