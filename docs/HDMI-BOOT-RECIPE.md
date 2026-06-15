@@ -29,3 +29,18 @@ NOTE: load each fatload as a separate step (12MB uimage is slow; chained cmds co
 - maxcpus=1 (SMP-tz not ported to 6.20 yet)
 - HPD/DDC dead -> forced mode only (no monitor auto-detect / real EDID modes)
 - separate kernel from the 6.1.174 wifi/4-core system
+
+## UPDATE: 1080p60 + 4 cores + console-on-HDMI (no WiFi)
+
+Stable config (WiFi omitted — 1080p scanout + WiFi SDIO DMA contend on DDR and hang):
+- kernel `uImage-uni` (SMP-tz + OCR + DRM, from the unified 6.20 build)
+- dtb `dtb/meson8b-m201-hdmi-4core.dts` = HDMI dtb (cvbs/efuse off) + cpus
+  `enable-method = "amlogic,meson8b-smp-tz"` (4 cores), NO wifi slot
+- bootargs:
+    console=tty0 console=ttyAML0,115200n8 panic=12 video=HDMI-A-1:1920x1080@60e
+  - `console=tty0` => kernel log + console render on the HDMI framebuffer
+  - `video=HDMI-A-1:1920x1080@60e` => force 1080p60 (CVT 172.8 MHz; HPD/EDID still N/A)
+- Result: `Brought up 4 CPUs`, `Console: switching to colour frame buffer device 240x67`,
+  `fb0: mesondrmfb` (1920x1080). Stable; text + boot log visible on the TV.
+
+WiFi + 1080p together hangs (DDR bandwidth). WiFi works at 720p, or HDMI-only at 1080p.
