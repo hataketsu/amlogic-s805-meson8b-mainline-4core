@@ -16,6 +16,8 @@ a kernel patch, device trees, and build scripts.
 | OS | Debian 12 armhf + **mainline kernel 6.1.174**, boots from SD |
 | Storage instability | Root-caused: kernel was using **TEE-reserved DRAM** → `reserved-memory` carve-out |
 | **4 cores** | **Working** — secondary CPUs brought up via the vendor secure-monitor protocol, recovered by disassembling the firmware |
+| **WiFi (RTL8189ES)** | **Working** — WPA2 + internet; `sd_a` pinmux + 1-line `meson-mx-sdio` OCR patch + `xtal_32k_out` + out-of-tree `8189es`. See [docs/WIFI.md](docs/WIFI.md) |
+| **HDMI** | **Working** (forced 720p + fbcon) on the xdarklight 6.20 TranSwitch-HDMI tree. See [docs/HDMI.md](docs/HDMI.md) |
 
 The headline result: **`nproc` = 4** on a mainline kernel, on a box whose proprietary
 TrustZone monitor gates CPU power-up. Upstream `meson8b` SMP assumes a non-secure SoC and

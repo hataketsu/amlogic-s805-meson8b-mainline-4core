@@ -16,6 +16,8 @@ patch kernel, device tree, và script build.
 | Hệ điều hành | Debian 12 armhf + **kernel mainline 6.1.174**, boot từ thẻ SD |
 | Mất ổn định khi tải nặng | Tìm ra nguyên nhân: kernel dùng nhầm **DRAM mà TEE giữ riêng** → khai báo `reserved-memory` |
 | **4 nhân** | **Chạy được** — khởi động các nhân phụ qua giao thức của secure monitor, lấy được bằng cách dịch ngược firmware |
+| **WiFi (RTL8189ES)** | **Chạy được** — kết nối WPA2 + internet; pinmux `sd_a` + vá OCR `meson-mx-sdio` 1 dòng + `xtal_32k_out` + driver `8189es`. Xem [docs/WIFI.md](docs/WIFI.md) |
+| **HDMI** | **Chạy được** (forced 720p + console fbcon) trên cây xdarklight 6.20 TranSwitch-HDMI. Xem [docs/HDMI.md](docs/HDMI.md) |
 
 Kết quả nổi bật: **`nproc` = 4** trên kernel mainline, trên máy mà secure monitor (TrustZone)
 khoá việc bật nguồn CPU. SMP `meson8b` upstream giả định SoC không secure nên treo/lỗi ở đây;

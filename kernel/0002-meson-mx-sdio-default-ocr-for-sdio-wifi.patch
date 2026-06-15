@@ -1,0 +1,38 @@
+From: hataketsu <hunganh.dev@gmail.com>
+Subject: [PATCH] mmc: meson-mx-sdio: advertise a default OCR for SDIO WiFi
+
+meson-mx-sdio sets no default ocr_avail and relies on a vmmc regulator
+or a DT "voltage-ranges" property. An SDIO WiFi card (e.g. RTL8189ES)
+on a slot with neither leaves ocr_avail == 0, so the MMC core rejects
+the card with "no support for card's volts" (-EINVAL).
+
+Honor "voltage-ranges" if present, otherwise advertise the standard
+3.x V range. Card power is supplied via mmc-pwrseq, so no regulator
+voltage switching is required.
+
+Signed-off-by: hataketsu <hunganh.dev@gmail.com>
+---
+ drivers/mmc/host/meson-mx-sdio.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+--- a/drivers/mmc/host/meson-mx-sdio.c
++++ b/drivers/mmc/host/meson-mx-sdio.c
+@@ -566,6 +566,15 @@ static int meson_mx_mmc_register_clks(struct meson_mx_mmc_host *host)
+ 	ret = mmc_of_parse(mmc);
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * meson-mx-sdio sets no default OCR. An SDIO WiFi card (e.g. RTL8189ES)
++	 * on a slot with no vmmc regulator would leave ocr_avail == 0, and the
++	 * MMC core rejects it with "no support for card's volts". Honor a DT
++	 * "voltage-ranges" if present, else advertise the full 3.x V range;
++	 * power is supplied via mmc-pwrseq, so no regulator switching is needed.
++	 */
++	mmc_of_parse_voltage(mmc, &mmc->ocr_avail);
++	if (!mmc->ocr_avail)
++		mmc->ocr_avail = 0x00ffff00;
++
+ 	ret = mmc_add_host(mmc);
+ 	if (ret)
+ 		return ret;
