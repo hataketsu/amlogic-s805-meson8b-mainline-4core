@@ -44,3 +44,12 @@ Stable config (WiFi omitted — 1080p scanout + WiFi SDIO DMA contend on DDR and
   `fb0: mesondrmfb` (1920x1080). Stable; text + boot log visible on the TV.
 
 WiFi + 1080p together hangs (DDR bandwidth). WiFi works at 720p, or HDMI-only at 1080p.
+
+## Persistent autoboot (saved to SD + u-boot env)
+1. SD FAT default boot files = the HDMI build:
+   `uImage`=uImage-uni, `uInitrd`=uInitrd-hdmi (923KB), `dtb`=dtb-hdmi4c.
+   (keep mainline as `uImage.mln`/`uInitrd.mln`/`dtb.mln` for recovery)
+2. Rewrite u-boot bootcmd + `saveenv`:
+   setenv bootcmd 'setenv bootargs console=tty0 console=ttyAML0,115200n8 panic=12 video=HDMI-A-1:1920x1080@60e; setenv initrd_high 0xffffffff; setenv fdt_high 0xffffffff; mmc rescan 0; fatload mmc 0 0x11000000 uImage; fatload mmc 0 0x12000000 uInitrd; fatload mmc 0 0x10000000 dtb; bootm 0x11000000 0x12000000 0x10000000'
+   saveenv     # -> "mmc save env ok"
+Power-on now autoboots straight into the 1080p 4-core HDMI console.
