@@ -1,0 +1,284 @@
+--- a/arch/arm/mach-meson/platsmp.c
++++ b/arch/arm/mach-meson/platsmp.c
+@@ -13,6 +13,8 @@
+ #include <linux/reset.h>
+ #include <linux/smp.h>
+ #include <linux/mfd/syscon.h>
++#include <linux/proc_fs.h>
++#include <linux/uaccess.h>
+ 
+ #include <asm/cacheflush.h>
+ #include <asm/cp15.h>
+@@ -35,6 +37,31 @@
+ static void __iomem *scu_base;
+ static struct regmap *pmu;
+ 
++/*
++ * On secure (TEE) Meson8b boxes the SMP holding-pen SRAM is locked to the
++ * secure world; non-secure access aborts. When meson_tz_sram_phys is set,
++ * route SRAM reads/writes through the secure monitor (smc r0=2 read,
++ * r0=3 write). The AO/PMU power regs and SCU are NOT locked (verified) so
++ * the rest of the meson8b bringup flow is reused unchanged.
++ */
++static u32 meson_tz_smc(u32 r0, u32 r1, u32 r2, u32 r3);
++static phys_addr_t meson_tz_sram_phys;
++
++static u32 meson_sram_readl(u32 off)
++{
++	if (meson_tz_sram_phys)
++		return meson_tz_smc(2, meson_tz_sram_phys + off, 0, 0);
++	return readl(sram_base + off);
++}
++
++static void meson_sram_writel(u32 val, u32 off)
++{
++	if (meson_tz_sram_phys)
++		meson_tz_smc(3, meson_tz_sram_phys + off, val, 0);
++	else
++		writel(val, sram_base + off);
++}
++
+ static struct reset_control *meson_smp_get_core_reset(int cpu)
+ {
+ 	struct device_node *np = of_get_cpu_node(cpu, 0);
+@@ -44,7 +71,7 @@
+ 
+ static void meson_smp_set_cpu_ctrl(int cpu, bool on_off)
+ {
+-	u32 val = readl(sram_base + MESON_SMP_SRAM_CPU_CTRL_REG);
++	u32 val = meson_sram_readl(MESON_SMP_SRAM_CPU_CTRL_REG);
+ 
+ 	if (on_off)
+ 		val |= BIT(cpu);
+@@ -54,7 +81,7 @@
+ 	/* keep bit 0 always enabled */
+ 	val |= BIT(0);
+ 
+-	writel(val, sram_base + MESON_SMP_SRAM_CPU_CTRL_REG);
++	meson_sram_writel(val, MESON_SMP_SRAM_CPU_CTRL_REG);
+ }
+ 
+ static void __init meson_smp_prepare_cpus(const char *scu_compatible,
+@@ -121,8 +148,8 @@
+ 	 * system without power-cycling, or when taking the CPU offline and
+ 	 * then taking it online again.
+ 	 */
+-	writel(__pa_symbol(secondary_startup),
+-	       sram_base + MESON_SMP_SRAM_CPU_CTRL_ADDR_REG(cpu));
++	meson_sram_writel(__pa_symbol(secondary_startup),
++			  MESON_SMP_SRAM_CPU_CTRL_ADDR_REG(cpu));
+ 
+ 	/*
+ 	 * SCU Power on CPU (needs to be done before starting the CPU,
+@@ -136,7 +163,7 @@
+ 	unsigned long timeout;
+ 
+ 	timeout = jiffies + (10 * HZ);
+-	while (readl(sram_base + MESON_SMP_SRAM_CPU_CTRL_ADDR_REG(cpu))) {
++	while (meson_sram_readl(MESON_SMP_SRAM_CPU_CTRL_ADDR_REG(cpu))) {
+ 		if (!time_before(jiffies, timeout)) {
+ 			pr_err("Timeout while waiting for CPU%d status\n",
+ 			       cpu);
+@@ -144,8 +171,8 @@
+ 		}
+ 	}
+ 
+-	writel(__pa_symbol(secondary_startup),
+-	       sram_base + MESON_SMP_SRAM_CPU_CTRL_ADDR_REG(cpu));
++	meson_sram_writel(__pa_symbol(secondary_startup),
++			  MESON_SMP_SRAM_CPU_CTRL_ADDR_REG(cpu));
+ 
+ 	meson_smp_set_cpu_ctrl(cpu, true);
+ 
+@@ -410,6 +437,142 @@
+ }
+ #endif
+ 
++/*
++ * TrustZone secondary-CPU bringup for secure Amlogic Meson8b boxes.
++ *
++ * On boxes with the vendor secure monitor (signed/encrypted "m8b_*_tee"
++ * bootloader) the SCU diagnostic/power registers, the AO CPU-power registers
++ * and the SMP holding-pen SRAM are locked to the secure world; non-secure
++ * (Linux) access faults with an external abort. The monitor exposes SMC calls
++ * to set the secondary boot address and release a core, doing the power
++ * sequence itself. ABI recovered from the vendor 3.10 BSP
++ * (arch/arm/mach-meson8b/meson-smc.S, clock.c):
++ *   r0 = CALL_TRUSTZONE_MON (4)
++ *   r1 = index: 0x201 read core-ctrl, 0x202 write core-ctrl, 0x207 set bootaddr
++ *   set bootaddr: r2 = cpu, r3 = phys entry
++ */
++#define MESON_TZ_MON			4
++#define MESON_TZ_CORE_RD_CTRL		0x201
++#define MESON_TZ_CORE_WR_CTRL		0x202
++#define MESON_TZ_CORE_BOOTADDR		0x207
++
++static noinline u32 meson_tz_smc(u32 r0, u32 r1, u32 r2, u32 r3)
++{
++	register u32 _r0 asm("r0") = r0;
++	register u32 _r1 asm("r1") = r1;
++	register u32 _r2 asm("r2") = r2;
++	register u32 _r3 asm("r3") = r3;
++
++	/*
++	 * This firmware's secure monitor clobbers r2-r12 across the SMC (the
++	 * vendor wrapper saves r2-ip). The simple mem queries survived without
++	 * declaring it, but the core-boot path (0x207) trashes enough registers
++	 * to crash the caller right after return. Clobber r4-r12/lr explicitly.
++	 */
++	asm volatile(
++		".arch_extension sec\n\t"
++		"smc #0\n\t"
++		: "+r" (_r0), "+r" (_r1), "+r" (_r2), "+r" (_r3)
++		:
++		: "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12",
++		  "lr", "cc", "memory");
++
++	return _r0;
++}
++
++/*
++ * Secondary boot via the secure monitor (recovered by disassembling this
++ * firmware's monitor at 0x05000000):
++ *   - the SMC dispatcher keys on (cmd & 0xf00): 0x200 => core handler.
++ *   - core handler is a jump table for cmd 0x201..0x20a:
++ *       0x207 -> store the secondary's entry address in a per-cpu mailbox
++ *       0x202 -> write core-ctrl: SCU-power + boot the core into the monitor's
++ *                own secure entry (0x05100128), which reads the mailbox and
++ *                drops to non-secure at our entry.
++ * REQUIRES the secure DRAM (0x05000000 region) be reserved in the dtb,
++ * otherwise Linux corrupts the monitor's mailbox and 0x207 hangs.
++ */
++/* secure-reg access via the monitor (these regs fault from non-secure) */
++#define SMCR(a)		meson_tz_smc(2, (a), 0, 0)
++#define SMCW(a, v)	meson_tz_smc(3, (a), (v), 0)
++/* monitor's per-cpu mailbox (set by the 0x207 handler) + SRAM holding pen */
++#define MESON_TZ_MBOX(cpu)	(0x05104da4u + (cpu) * 4)
++#define MESON_TZ_SRAM_CTRL	0xd901ff80u
++#define MESON_TZ_SRAM_ADDR(cpu)	(0xd901ff84u + ((cpu) - 1) * 4)
++#define MESON_TZ_MON_ENTRY	0x05100128u
++
++static int meson8b_tz_smp_boot_secondary(unsigned int cpu,
++					 struct task_struct *idle)
++{
++	void __iomem *scu = ioremap(0xc4300000, 0x100);
++	void __iomem *ao  = ioremap(0xc8100000, 0x200);
++	void __iomem *hhi = ioremap(0xc1104000, 0x400);
++	u32 entry = (u32)__pa_symbol(secondary_startup);
++	int t;
++
++	if (!scu || !ao || !hhi)
++		return -ENOMEM;
++
++	/*
++	 * Replicate the secure monitor's secondary power-on routine (0x513627c)
++	 * directly: AO/SCU/HHI are non-secure so we poke them ourselves, with a
++	 * BOUNDED power-good poll (the monitor's own poll spins forever in our
++	 * boot context). SRAM holding-pen + the monitor mailbox are secure -> smc.
++	 */
++	writel(readl(scu + 8) & ~(3u << (8 * cpu)), scu + 8);		/* SCU power on */
++	writel(readl(ao + 0xe0) & ~(3u << (16 + 2 * cpu)), ao + 0xe0);	/* AO CNTL0 */
++	udelay(5);
++	writel(readl(hhi + 0x19c) | (1u << (cpu + 24)), hhi + 0x19c);	/* reset assert */
++	writel(readl(ao + 0xf4) & ~(0xfu << (32 - 4 * cpu)), ao + 0xf4);	/* AO MEM_PD0 */
++	writel(readl(ao + 0xe4) & ~(3u << (2 * (cpu + 1))), ao + 0xe4);	/* AO CNTL1 wake */
++	udelay(10);
++	for (t = 0; t < 2000; t++) {					/* bounded power-good */
++		if (readl(ao + 0xe4) & (1u << (cpu + 16)))
++			break;
++		udelay(10);
++	}
++	pr_info("meson-tz: cpu%u power-good %s (t=%d)\n", cpu,
++		(readl(ao + 0xe4) & (1u << (cpu + 16))) ? "OK" : "TIMEOUT", t);
++	writel(readl(ao + 0xe0) & ~(1u << cpu), ao + 0xe0);		/* isolation off */
++	writel(readl(hhi + 0x19c) & ~(1u << (cpu + 24)), hhi + 0x19c);	/* reset deassert */
++	writel(readl(scu + 8) & ~(3u << (8 * cpu)), scu + 8);		/* SCU power */
++
++	SMCW(MESON_TZ_MBOX(cpu), entry);		/* mailbox = kernel entry */
++	SMCW(MESON_TZ_SRAM_ADDR(cpu), MESON_TZ_MON_ENTRY);	/* boot -> monitor entry */
++	SMCW(MESON_TZ_SRAM_CTRL, SMCR(MESON_TZ_SRAM_CTRL) | (1u << cpu) | 1);
++
++	iounmap(scu); iounmap(ao); iounmap(hhi);
++
++	asm volatile("dsb sy\n\tsev\n\t" ::: "memory");
++	return 0;
++}
++
++static void __init meson8b_tz_smp_prepare_cpus(unsigned int max_cpus)
++{
++	struct device_node *node;
++	void __iomem *scu;
++
++	pr_info("meson-tz: secure mem base=%#x size=%#x\n",
++		meson_tz_smc(MESON_TZ_MON, 0x701, 0, 0),
++		meson_tz_smc(MESON_TZ_MON, 0x702, 0, 0));
++
++	/* enable SCU for cache coherency (non-secure accessible) */
++	node = of_find_compatible_node(NULL, NULL, "arm,cortex-a5-scu");
++	if (node) {
++		scu = of_iomap(node, 0);
++		of_node_put(node);
++		if (scu) {
++			scu_enable(scu);
++			iounmap(scu);
++		}
++	}
++}
++
++static struct smp_operations meson8b_tz_smp_ops __initdata = {
++	.smp_prepare_cpus	= meson8b_tz_smp_prepare_cpus,
++	.smp_boot_secondary	= meson8b_tz_smp_boot_secondary,
++};
++
+ static struct smp_operations meson8_smp_ops __initdata = {
+ 	.smp_prepare_cpus	= meson8_smp_prepare_cpus,
+ 	.smp_boot_secondary	= meson8_smp_boot_secondary,
+@@ -430,3 +593,48 @@
+ 
+ CPU_METHOD_OF_DECLARE(meson8_smp, "amlogic,meson8-smp", &meson8_smp_ops);
+ CPU_METHOD_OF_DECLARE(meson8b_smp, "amlogic,meson8b-smp", &meson8b_smp_ops);
++CPU_METHOD_OF_DECLARE(meson8b_smp_tz, "amlogic,meson8b-smp-tz", &meson8b_tz_smp_ops);
++
++/*
++ * RE helper: dump the secure-monitor / secure DRAM region via the secure-read
++ * SMC (r0=2). Lets us disassemble the monitor (normally unreadable from the
++ * non-secure world) to recover this firmware's real secondary-CPU boot SMC.
++ * Window: 0x04f00000..0x05200000 (3 MiB) covering the monitor + secure OS head.
++ */
++#define MESON_SECMON_BASE	0x04f00000u
++#define MESON_SECMON_LEN	0x00300000u
++
++static ssize_t meson_secmon_read(struct file *f, char __user *ubuf,
++				 size_t len, loff_t *ppos)
++{
++	loff_t pos = *ppos;
++	size_t done = 0;
++
++	if (pos < 0 || pos >= MESON_SECMON_LEN)
++		return 0;
++	if (pos + len > MESON_SECMON_LEN)
++		len = MESON_SECMON_LEN - pos;
++
++	while (done < len) {
++		u32 w = meson_tz_smc(2, MESON_SECMON_BASE + (u32)(pos + done), 0, 0);
++		size_t n = min(sizeof(w), len - done);
++
++		if (copy_to_user(ubuf + done, &w, n))
++			return -EFAULT;
++		done += n;
++	}
++	*ppos += done;
++	return done;
++}
++
++static const struct proc_ops meson_secmon_pops = {
++	.proc_read	= meson_secmon_read,
++	.proc_lseek	= default_llseek,
++};
++
++static int __init meson_secmon_init(void)
++{
++	proc_create("meson_secmon", 0400, NULL, &meson_secmon_pops);
++	return 0;
++}
++late_initcall(meson_secmon_init);

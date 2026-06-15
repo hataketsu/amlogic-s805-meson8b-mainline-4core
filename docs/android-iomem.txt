@@ -1,0 +1,19 @@
+00200000-04efffff : System RAM
+  00208000-00bdf4cb : Kernel code
+  00c1a000-00f340ab : Kernel data
+05000000-0e8fffff : Video RAM
+0e900000-3cefffff : System RAM
+d00c0000-d00c0100 : Mali_GP
+d00c1000-d00c1200 : Mali_L2
+d00c2000-d00c2100 : Mali_PMU
+d00c3000-d00c3100 : Mali_GP_MMU
+d00c4000-d00c4100 : Mali_PP0_MMU
+d00c5000-d00c5100 : Mali_PP1_MMU
+d00c8000-d00c9100 : Mali_PP0
+d00ca000-d00cb100 : Mali_PP1
+d00d0000-d00d0200 : Mali_L2
+d00d2000-d00d2100 : Mali_DMA
+d00d3000-d00d3100 : Mali_Broadcast
+d00d4000-d00d4100 : Mali_DLBU
+d00d5000-d00d5100 : Mali_PP_MMU_Broadcast
+d00d6000-d00d7100 : Mali_PP_Broadcast

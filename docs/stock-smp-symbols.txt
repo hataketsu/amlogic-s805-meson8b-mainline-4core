@@ -1,0 +1,27 @@
+c0015234 T __hyp_stub_install_secondary
+c001ba1c T meson_set_cpu_power_ctrl
+c001bcc8 T meson_set_cpu_ctrl_reg
+c001bd08 T meson_set_cpu_ctrl_addr
+c0029ef4 T meson_smc1
+c0029f10 T meson_smc_hal_api
+c0029f2c T meson_smc2
+c0029f44 T meson_smc3
+c0029fd0 T meson_auxcoreboot_addr
+c002a1e8 T meson_secure_reg_read
+c002a1f4 T meson_secure_reg_write
+c027e54c t xfer_secondary_pool
+c069ff5c t cfg80211_secondary_chans_ok
+c06ce980 T secondary_startup
+c06ce9ec T __secondary_switched
+c06ce9f8 t __secondary_data
+c06cf0b0 T boot_secondary
+c06cf33c T secondary_start_kernel
+c06cf83c T meson_secondary_startup
+c06cf86c T meson_secondary_init
+c06cf898 T meson_boot_secondary
+c06d11d0 t gic_secondary_init
+c0a91648 B secondary_data
+bf08306c t secondary_ch_offset_to_hal_ch_offset	[8189es]
+bf08309c t hal_ch_offset_to_secondary_ch_offset	[8189es]
+bf0830cc t rtw_set_ie_secondary_ch_offset	[8189es]
+bf05a014 t secondary_otz_smc_handler	[otz_client]

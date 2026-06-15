@@ -1,0 +1,6 @@
+*.dtb
+*.cpio.gz
+uImage
+uInitrd
+linux-*/
+modout*/
