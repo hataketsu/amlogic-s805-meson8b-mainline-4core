@@ -21,8 +21,9 @@ _EN below; tóm tắt tiếng Việt ở cuối._
   or a meson8b TranSwitch HPD/DDC gap). Forced mode works; auto-detect needs register RE.
 - **WiFi + SD card simultaneously** — ❌ one SDIO controller, MMC core = one slot. Needs the
   `meson8-sdhc` driver (for SD on the other controller) or MMC-core multi-slot.
-- **Unified kernel** — WiFi/4-core live on 6.1.174, HDMI on the 6.20 xdarklight tree; a single
-  build needs porting the SMP-tz patch + the WiFi bits onto 6.20 (in progress).
+- **Unified kernel** — ✅ DONE. One xdarklight 6.20 kernel runs **4 cores + WiFi + HDMI together**
+  (`nproc=4`, wlan0 DHCP + ping, fb0 console). SMP-tz + OCR patches on 6.20. Rootfs is RAM (SDIO
+  given to WiFi). See `UNIFIED.md`.
 - **HW video decode/encode (VPU)** — ❌ on mainline. No `amvdec`/`amvenc` driver for meson8b
   upstream (`meson-vdec` is GX/S905+ only). Software 1080p is too heavy for the A5. Porting
   the vendor 3.10 driver is a large effort. See `VIDEO-DECODE.md`.
