@@ -246,9 +246,19 @@
 				compatible = "amlogic,meson8-sdhc", "amlogic,meson-mx-sdhc";
 				reg = <0x8e00 0x42>;
 				interrupts = <0x00 0x4e 0x01>;
-				status = "disabled";
+				status = "okay";
 				clocks = <0x05 0x03 0x07 0x03 0x06 0x03 0x08 0x03 0x1b>;
 				clock-names = "clkin0", "clkin1", "clkin2", "clkin3", "pclk";
+				pinctrl-0 = <0xfd>;
+				pinctrl-names = "default";
+				bus-width = <0x08>;
+				max-frequency = <0x2faf080>;
+				cap-mmc-highspeed;
+				disable-wp;
+				non-removable;
+				no-sdio;
+				vmmc-supply = <0x10>;
+				vqmmc-supply = <0x10>;
 			};
 
 			interrupt-controller@9880 {
@@ -386,6 +396,7 @@
 				};
 
 				sdxc-c {
+					phandle = <0xfd>;
 
 					mux {
 						groups = "sdxc_d0_c", "sdxc_d13_c", "sdxc_d47_c", "sdxc_clk_c", "sdxc_cmd_c";
