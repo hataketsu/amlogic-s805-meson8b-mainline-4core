@@ -1,0 +1,41 @@
+diff --git a/drivers/gpu/drm/meson/meson_plane.c b/drivers/gpu/drm/meson/meson_plane.c
+index 4cec3a324..2fda11604 100644
+--- a/drivers/gpu/drm/meson/meson_plane.c
++++ b/drivers/gpu/drm/meson/meson_plane.c
+@@ -476,14 +476,17 @@ static const struct drm_plane_funcs meson_plane_funcs = {
+ };
+ 
+ /*
+- * X components (for example in DRM_FORMAT_XRGB8888 and DRM_FORMAT_XBGR8888)
+- * are not supported because these older SoC's are lacking the OSD_REPLACE_EN
+- * bit to replace the X alpha component with a static value, leaving the alpha
+- * component in an undefined state.
++ * X components (DRM_FORMAT_XRGB8888 / DRM_FORMAT_XBGR8888) are enabled here:
++ * meson_plane_atomic_update() sets OSD_REPLACE_EN for X formats and
++ * meson_viu_init() now programs the 0xff alpha replace value on M8B, so the
++ * X alpha component is forced opaque. Needed for KMS/glamor clients that
++ * default to a 32bpp XRGB8888 scanout (e.g. RetroArch, Xorg modesetting).
+  */
+ static const uint32_t supported_drm_formats_m8[] = {
+ 	DRM_FORMAT_ARGB8888,
+ 	DRM_FORMAT_ABGR8888,
++	DRM_FORMAT_XRGB8888,
++	DRM_FORMAT_XBGR8888,
+ 	DRM_FORMAT_RGB888,
+ 	DRM_FORMAT_RGB565,
+ };
+diff --git a/drivers/gpu/drm/meson/meson_viu.c b/drivers/gpu/drm/meson/meson_viu.c
+index bdfa342c4..f715e2259 100644
+--- a/drivers/gpu/drm/meson/meson_viu.c
++++ b/drivers/gpu/drm/meson/meson_viu.c
+@@ -449,9 +449,8 @@ void meson_viu_init(struct meson_drm *priv)
+ 	writel_relaxed(reg, priv->io_base + _REG(VIU_OSD2_FIFO_CTRL_STAT));
+ 
+ 	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+-	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+ 	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+-		/* Set OSD alpha replace value */
++		/* Set OSD alpha replace value (M8B: enables opaque XRGB8888) */
+ 		writel_bits_relaxed(0xff << OSD_REPLACE_SHIFT,
+ 				    0xff << OSD_REPLACE_SHIFT,
+ 				    priv->io_base + _REG(VIU_OSD1_CTRL_STAT2));
